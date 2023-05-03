@@ -1,10 +1,10 @@
 // src/database/index.js
 const mongoose = require('mongoose');
 const userDb = require('./user');
-const unitDb = require('./unit');
-const alertDb = require('./alert');
-const maintenanceDb = require('./mtto');
-const config = require('../config/config');
+//const unitDb = require('./unit');
+//const alertDb = require('./alert');
+//const maintenanceDb = require('./mtto');
+const config = require('../../config/config');
 
 const connectDb = async () => {
   try {
@@ -25,7 +25,7 @@ connectDb();
 
 module.exports = {
   ...userDb,
-  ...unitDb,
-  ...alertDb,
-  ...maintenanceDb,
+  //...unitDb,
+  //...alertDb,
+  //...maintenanceDb,
 };

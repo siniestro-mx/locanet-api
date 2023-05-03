@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const routes = require('./routes/index');
 const { errorHandler, notFoundHandler } = require('./middleware/index');
+const config = require('../config/config');
 
 const app = express();
 
@@ -35,7 +36,7 @@ app.use(notFoundHandler);
 // Middleware para manejar errores
 app.use(errorHandler);
 
-const PORT = process.env.LOCANET_PORT || 3000;
+const PORT = config.LOCANET_PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
