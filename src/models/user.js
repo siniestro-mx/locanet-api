@@ -45,9 +45,9 @@ userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) {
     return next();
   }
-
+  
   const hashedPassword = await argon2.hash(this.password);
-
+  
   this.password = hashedPassword;
   next();
 });

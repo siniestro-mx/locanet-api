@@ -1,29 +1,38 @@
-const { successHandler } = require('../utils/response');
-const { createUser, findUserByEmail } = require('../database/user');
-const { generateAccessToken, verifyToken } = require('../utils/auth');
+const {
+  successHandler
+} = require('../utils/response');
+const {
+  createUser,
+  findUserByUsername
+} = require('../database/user');
+const {
+  generateAccessToken,
+  verifyToken
+} = require('../utils/auth');
 
-async function validate(req, res, next) {
-  const cookie = req.get('cookie');
-  const token = cookie ? cookie.split('__Host-locanet=')[1] : null; // Get token from cookie if any;
-  const path = req.originalUrl.split('?')[0];  // Remove query params from path if any;
-
-  if (!token) {
-    return next(new Error(`El usuario no ha iniciado sesión`, { cause: { type: 'Authentication', err: null, name: 'need.login' } }));
-  }
-
+async function checkIfLoggedIn(req, res, next) {
   try {
-    const result = await verifyToken(token);
-    const user = await findUserByEmail(result.payload.sub);
+    const cookie = req.get('cookie');
+    const token = cookie ? cookie.split('__Host-locanet=')[1] : null;
 
+    if (!token) {
+      const error = new Error(`El usuario no ha iniciado sesión`, {
+        cause: {
+          type: 'Authentication',
+          err: null,
+          name: 'need.login'
+        }
+      });
+
+      error.statusCode = 401;
+      return next(error);
+    }
+
+    await verifyToken(token);
+    successHandler(res, 200, 'Usuario autenticado');
   } catch (err) {
-    return next(err);
+    next(err);
   }
-
-  const valid_role = validatePath(path, req.user.role);
-
-  if (valid_role) next();
-
-  next(new Error(`El usuario no esta autorizado para accesar la ruta ${path}`, { cause: { type: 'Scope' }, name: 'missing.role' }));
 }
 
 async function register(req, res, next) {
@@ -37,7 +46,7 @@ async function register(req, res, next) {
       sameSite: 'strict',
       path: '/',
     });
-    
+
     successHandler(res, 201, 'Usuario registrado exitosamente', user);
   } catch (error) {
     next(error);
@@ -46,28 +55,53 @@ async function register(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const user = await findUserByEmail(req.body.email);
+    const user = await findUserByUsername(req.body.username);
     if (!user) {
-      throw new Error('Usuario no encontrado', { cause: { type: 'Authentication', err: null, name: 'login.user' } });
+      return next(new Error('Usuario no encontrado', {
+        cause: {
+          type: 'Authentication',
+          err: null,
+          name: 'user.notfound'
+        }
+      }));
     }
 
     const validPassword = await user.comparePassword(req.body.password);
     if (!validPassword) {
-      throw new Error('Contraseña incorrecta', { cause: { type: 'Authentication', err: null, name: 'login.password' } });
+      return next(new Error('Contraseña incorrecta', {
+        cause: {
+          type: 'Authentication',
+          err: null,
+          name: 'login.password'
+        }
+      }));
     }
 
+    const userObject = user.toObject();
+
+    userObject.permissions = Object.fromEntries(userObject.permissions);
+
+    delete userObject.password;
+    delete userObject.__v;
+    delete userObject._id;
+
     const token = await generateAccessToken(user);
+
     res.cookie('__Host-locanet', token, {
+      domain: '.locanet.mx',
       httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
+      secure: true,  
+      sameSite: 'lax',
       path: '/',
+      maxAge: 24 * 60 * 60 * 1000,
     });
-    successHandler(res, 200, 'Inicio de sesión exitoso', user);
+    successHandler(res, 200, 'Inicio de sesión exitoso', userObject);
   } catch (error) {
+    error.statusCode = 401;
     next(error);
   }
 }
+
 async function logout(req, res, next) {
   try {
     res.clearCookie('__Host-locanet', {
@@ -82,25 +116,8 @@ async function logout(req, res, next) {
   }
 }
 
-function validatePath(path, role) {
-  const paths = {
-    'admin': [],
-    'user': [],
-    'superuser': [],
-    'guest': []
-  }
-
-  console.log(`usuario con rol -> ${role} intentando accesar a -> ${path}`);
-
-  return true;
-
-  if (paths[role].includes(path)) return true;
-
-  return false
-}
-
 module.exports = {
-  validate,
+  checkIfLoggedIn,
   register,
   login,
   logout

@@ -9,7 +9,7 @@ async function generateAccessToken(user) {
   const jwt = await new SignJWT({
     scope: user.role
   })
-    .setSubject(user._id)
+    .setSubject(user.username)
     .setIssuedAt()
     .setIssuer(config.LOCANET_HOST)
     .setAudience(config.LOCANET_HOST)
@@ -49,7 +49,7 @@ async function verifyToken(token) {
   try {
     const public_key = await getPublicKey();
 
-    const result = await jwtVerify(token, publicKey, {
+    const result = await jwtVerify(token, public_key, {
       algorithms: ['EdDSA'],
       issuer: config.LOCANET_HOST,
       audience: config.LOCANET_HOST,

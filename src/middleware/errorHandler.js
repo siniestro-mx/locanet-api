@@ -1,6 +1,7 @@
 // src/middleware/errorHandler.js
 function errorHandler(err, req, res, next) {
-  console.error(err.stack);
+  
+  console.error(err.message);
 
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Ha ocurrido un error interno del servidor';
