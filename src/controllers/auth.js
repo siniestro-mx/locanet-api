@@ -12,7 +12,7 @@ const {
 
 async function checkIfLoggedIn(req, res, next) {
   try {
-    const cookie = req.get('cookie');
+    /*const cookie = req.get('cookie');
     const token = cookie ? cookie.split('__Host-locanet=')[1] : null;
 
     if (!token) {
@@ -28,8 +28,28 @@ async function checkIfLoggedIn(req, res, next) {
       return next(error);
     }
 
-    await verifyToken(token);
-    successHandler(res, 200, 'Usuario autenticado');
+    await verifyToken(token);*/
+    const user = await findUserByUsername('siniestro@siniestro.dev');
+
+    if (!user) {
+      return next(new Error('Usuario no encontrado', {
+        cause: {
+          type: 'Authentication',
+          err: null,
+          name: 'user.notfound'
+        }
+      }));
+    }
+
+    const userObject = user.toObject();
+
+    userObject.permissions = Object.fromEntries(userObject.permissions);
+
+    delete userObject.password;
+    delete userObject.__v;
+    delete userObject._id;
+
+    successHandler(res, 200, 'Usuario autenticado', userObject);
   } catch (err) {
     next(err);
   }
@@ -90,7 +110,7 @@ async function login(req, res, next) {
     res.cookie('__Host-locanet', token, {
       domain: '.locanet.mx',
       httpOnly: true,
-      secure: true,  
+      secure: true,
       sameSite: 'lax',
       path: '/',
       maxAge: 24 * 60 * 60 * 1000,

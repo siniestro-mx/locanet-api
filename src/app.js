@@ -20,12 +20,6 @@ app.use(helmet());
 app.use(cookieParser());
 
 // Configurar CORS
-/*app.use(
-  cors({
-    origin: 'https://yourfrontend.com', // Reemplaza esto con la URL de tu frontend
-    credentials: true,
-  });
-);*/
 app.use(cors({
   origin: ['http://localhost:1841','https://nuevo.locanet.mx'],
   credentials: true

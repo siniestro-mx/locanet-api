@@ -5,7 +5,7 @@ async function authorize(req, res, next) {
   const cookie = req.get('cookie');
   let token = cookie ? cookie.split('__Host-locanet=')[1] : null; // Get token from cookie if any;
   const path = req.originalUrl.split('?')[0]; // Remove query params from path if any;
-  
+
   /** si no hay token en las cookies, checar en el header Bearer */
   if (!token) {
     const authHeader = req.get('Authorization');
@@ -25,14 +25,33 @@ async function authorize(req, res, next) {
   }
 
   try {
-    const result = await verifyToken(token);
-    const user = await findUserByUsername(result.payload.sub);
-    req.user = user;
+    //descomentar cuando ya se vaya a usar en produccion
+    //const result = await verifyToken(token);
+    //const user = await findUserByUsername(result.payload.sub);
+    const user = await findUserByUsername(token);
+
+    if (user) {
+      console.log(`usuario encontrado -> ${user.username}`);
+      const userObject = user.toObject();
+
+      userObject.permissions = Object.fromEntries(userObject.permissions);
+
+      delete userObject.password;
+      delete userObject.__v;
+      delete userObject._id;
+
+      req.user = userObject;
+    }
   } catch (err) {
     return next(err);
   }
 
-  const valid_role = validatePath(path, req.user.role);
+  let valid_role = false;
+
+  if(req.user){
+    valid_role = validatePath(path, req.user.role);
+  }
+  
 
   if (valid_role) return next();
 
@@ -44,16 +63,24 @@ async function authorize(req, res, next) {
   }));
 }
 
-async function authorizeWs (socket, next) {
+async function authorizeWs(socket, next) {
   try {
-    const token = socket.handshake.query.token;
+    const token = socket.handshake.auth.token;
 
     if (!token) {
       return next(new Error(`El usuario no ha iniciado sesión`));
     }
 
-    const result = await verifyToken(token);
-    const user = await findUserByUsername(result.payload.sub);
+    //const result = await verifyToken(token);
+    //const user = await findUserByUsername(result.payload.sub);
+    let user = await findUserByUsername(token);
+
+    user = user.toJSON();
+
+    delete user.password;
+    delete user._id;
+    delete user.__v;
+
     socket.user = user;
 
     next();
@@ -63,7 +90,7 @@ async function authorizeWs (socket, next) {
   }
 }
 
-function validateEvent([event, ...args], next) {
+function validateEvent([event, ...args], socket, next) {
   const valid_role = validateWebsocketEvent(event, socket.user.role);
 
   if (!valid_role) {
@@ -83,7 +110,7 @@ function validatePath(path, role) {
 
   console.log(`usuario con rol -> ${role} intentando accesar a -> ${path}`);
 
-  if(role === 'admin') return true;
+  if (role === 'admin') return true;
 
   if (paths[role].includes(path)) return true;
 
@@ -100,7 +127,7 @@ function validateWebsocketEvent(event, role) {
 
   console.log(`usuario con rol -> ${role} intentando emitir evento -> ${event}`);
 
-  if(role === 'admin') return true;
+  if (role === 'admin') return true;
 
   if (events[role].includes(event)) return true;
 

@@ -1,11 +1,12 @@
 const { Server } = require('socket.io');
 const { authorizeWs, validateEvent } = require('../middleware/auth');
-const { addWebSocketEventListeners } = require('./index');
+const { joinRooms, addWebSocketEventListeners } = require('./index');
+const { socketIOClientsConfig } = require('../../config/config');
 let io;
 
 function initSocketIO(server) {
   initSocketIOServer(server);
-  initSocketIOClient();
+  initSocketIOClients();
 }
 
 function initSocketIOServer(server) {
@@ -17,43 +18,42 @@ function initSocketIOServer(server) {
     }
   });
 
-  /*io.engine.generateId = (req) => {
+  io.engine.generateId = (req) => {
     return `${req._query.user}_${req._query.fingerprint}`;
-  };*/
+  };
 
   /*  autorización para websocket */
-  //io.use(authorizeWs);
+  io.use(authorizeWs);
   // Escuchar eventos de conexión de Socket.io
   io.on('connection', (socket) => {
-    console.log('Un usuario se ha conectado.');
+    console.log(`Usuario ${socket.user.username} conectado a socket.io`);
 
-    //socket.use(validateEvent);
-    socket.join('units')
+    socket.use(validateEvent);
+
+    joinRooms(socket);
     addWebSocketEventListeners(io, socket);
   });
 }
 
-function initSocketIOClient() {
+function initSocketIOClients() {
   const ioClient = require('socket.io-client');
 
-  // Conéctate al servidor de Socket.IO del microservicio de parser.
-  // Asegúrate de reemplazar 'http://localhost:3666' con la URL y puerto correctos.
-  const socket = ioClient.connect('http://10.132.166.214:3666');
+  for (const client in socketIOClientsConfig) {
+    const { ip, port } = socketIOClientsConfig[client];
+    // Conéctate al servidor de Socket.IO del microservicio de parser.
+    const socket = ioClient.connect(`http://${ip}:${port}`);
 
-  // Escucha el evento 'gpsdata'.
-  socket.on('gpsdata', (gpsdata) => {
-    // Maneja los datos de GPS aquí. Por ejemplo, podrías:
-    // - Actualizar un caché en memoria.
-    // - Emitir los datos a los clientes conectados.
-    // - O cualquier otra cosa que necesites hacer con los datos de GPS en tiempo real.
-    const device_id = gpsdata.UniqueID;
+    // Escucha el evento 'gpsdata'.
+    socket.on('gpsdata', (gpsdata) => {
+      const device_id = gpsdata.UniqueID;
 
-    console.log(`Recibiendo paquete de ${device_id}`);
+      //console.log(`Recibiendo paquete de ${device_id} y reenviandolo a los clientes conectados.`);
 
-    io.to(device_id).emit('gpsdata', gpsdata);
-    io.to('units').emit('gpsdata', gpsdata);
+      io.to(device_id).emit('gpsdata', gpsdata);
+      io.to('units').emit('gpsdata', gpsdata);
 
-  });
+    });
+  }
 }
 
 module.exports = {
