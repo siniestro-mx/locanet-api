@@ -13,7 +13,7 @@ function initSocketIOServer(server) {
   // Inicializar una nueva instancia de socket.io pasando el servidor http
   io = new Server(server, {
     cors: {
-      origin: ['http://localhost:1841', 'https://nuevo.locanet.mx'], // Asegúrate de agregar tus dominios aquí también
+      origin: ['http://localhost:1841', 'https://api.locanet.mx'], // Asegúrate de agregar tus dominios aquí también
       credentials: true
     }
   });
@@ -35,23 +35,27 @@ function initSocketIOServer(server) {
   });
 }
 
+/** La función, se conecta a todos los microservicios del tipo parser, que son los encargados de convertir los paquetes de los
+ *  dispositivos en objetos JSON. Una vez conectada escucha por eventos de los parsers; algunas veces los reenvia a los clientes
+ *  conectados al frontend y otras los procesa y puede relizar actualizaciónes en la base de datos u otra acción necesaria.
+ */
 function initSocketIOClients() {
   const ioClient = require('socket.io-client');
 
   for (const client in socketIOClientsConfig) {
     const { ip, port } = socketIOClientsConfig[client];
-    // Conéctate al servidor de Socket.IO del microservicio de parser.
+
     const socket = ioClient.connect(`http://${ip}:${port}`);
 
-    // Escucha el evento 'gpsdata'.
+    /** El evento gpsdata se recibo de los parsers cada que se recibe un paquete nuevo de algun dispostitivo gps.
+     *  Este evento se reenvia a los clientes conectados al frontend. Se emiten dos eventos uno al canal de la unidad
+     *  y otro al canal de todas las unidades, al cual tienen acceso los administradores.
+     */
     socket.on('gpsdata', (gpsdata) => {
       const device_id = gpsdata.UniqueID;
 
-      //console.log(`Recibiendo paquete de ${device_id} y reenviandolo a los clientes conectados.`);
-
       io.to(device_id).emit('gpsdata', gpsdata);
       io.to('units').emit('gpsdata', gpsdata);
-
     });
   }
 }

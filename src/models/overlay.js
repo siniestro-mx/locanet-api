@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
-const geofenceObject = {
-  text: String,
+const overlayObject = {
   name: String,
   category: String,
   checked: Boolean,
@@ -13,12 +12,14 @@ const geofenceObject = {
   fillOpacity: Number,
   strokeWeight: Number,
   vehicles: [String],
-  tolerance: Number,  
+  unitsInOverlay: Array,
+  tolerance: Number,
   icon: String,
+  poiIcon: String,
   radius: {
     type: Number,
-    validate : {
-      validator : function(v) {
+    validate: {
+      validator: function (v) {
         // validación personalizada
         return this.overlay.type === 'Point' ? v !== null : true;
       },
@@ -35,45 +36,23 @@ const geofenceObject = {
       type: [],
       required: true
     }
-  }
-};
-const poiObject = {
-  text: String,
-  name: String,
-  category: String,
-  owner: String,
-  clientcategories: [String],
-  checked: Boolean,
-  type: String,
-  fillColor: String,
-  strokeColor: String,
-  strokeOpacity: Number,
-  fillOpacity: Number,
-  vehicles: [String],
-  tolerance: Number,
-  icon: String,
-  poiIcon: String,
-  overlay: {
+  },
+  overlayPolygon: {
     type: {
       type: String,
+      enum: ['Polygon']
     },
-    coordinates: [ 
-      Number,
-      Number
-    ]
+    coordinates: {
+      type: []
+    }
   }
 };
-const GeofenceSchema = new mongoose.Schema(geofenceObject,{
-  collection: 'geofences'
-});
-const PoiSchema = new mongoose.Schema(poiObject, {
-  collection: 'pois'
+
+const OverlaySchema = new mongoose.Schema(overlayObject, {
+  collection: 'overlays',
+  strict: false
 });
 
-const GeofenceModel = mongoose.model('Geofence', GeofenceSchema);
-const PoiModel = mongoose.model('Poi', PoiSchema);
+const Overlay = mongoose.model('Overlay', OverlaySchema);
 
-module.exports = {
-  GeofenceModel,
-  PoiModel
-};
+module.exports = Overlay;

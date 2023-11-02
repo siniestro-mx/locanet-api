@@ -113,11 +113,15 @@ const schemaObject = {
   ValidPosition: {
     type: Boolean,
     required: true
+  },
+  Overlays: {
+    type: Array
   }
 };
 
 const unitSchema = new mongoose.Schema(schemaObject, {
   collection: 'unitsCache',
+  strict: false
 });
 
 const Unit = mongoose.model('Unit', unitSchema);

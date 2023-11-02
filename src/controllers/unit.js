@@ -7,7 +7,7 @@ async function getUnitList(req, res, next) {
 
   try {
     const list = await getList(params);
-    
+
     successHandler(res, 200, 'Lista de unidades', list);
   } catch (error) {
     console.error(error);
@@ -16,5 +16,5 @@ async function getUnitList(req, res, next) {
 }
 
 module.exports = {
-  getUnitList
+  getUnitList,
 };

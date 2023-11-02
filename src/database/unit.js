@@ -1,6 +1,17 @@
 const Unit = require('../models/unit');
 
-async function getList(params) {
+async function getList() {
+  // Simplemente realiza una consulta para obtener todas las unidades
+  let resp = await Unit.find({});
+
+  if (resp && resp.length > 0) {
+    return { totalCount: resp.length, devices: resp };
+  } else {
+    return { totalCount: 0, devices: [] };
+  }
+}
+
+/*async function getList(params) {
   let { start, limit, sort, filter } = params;
 
   start = parseInt(start);
@@ -96,7 +107,7 @@ async function getList(params) {
   else {
     return { totalCount: 0, devices: [] };
   }
-}
+}*/
 
 module.exports = {
   getList,
