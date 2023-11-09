@@ -1,15 +1,15 @@
 //const { addUserEvents } = require('./user');
 const { addUnitEvents } = require('./unit');
 
-function joinRooms(socket){
+function joinRooms(socket) {
   const role = socket.user.role;
   const units = socket.user.units;
 
-  if(role === 'admin'){
+  if (role === 'admin') {
     socket.join('units');
     console.log(`${socket.user.username} se unió al room units`);
   }
-  else{
+  else {
     units.forEach(unit => {
       socket.join(unit);
     });

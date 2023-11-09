@@ -43,6 +43,9 @@ const IP = config.LOCANET_IP;
 // Crear un servidor http y pasar la app de express
 const server = http.createServer(app);
 
+/**  Inicializar socket.io, tanto server como cliente. El server sirve para comunicarse con el frontend
+*    el cliente sirve para conectarse a los parsers de los dispositivos gps y recibir actualizaciones de estos
+*/
 initSocketIO(server);
 
 server.listen(PORT, IP, () => {

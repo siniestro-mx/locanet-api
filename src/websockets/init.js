@@ -1,7 +1,17 @@
-const { Server } = require('socket.io');
-const { authorizeWs, validateEvent } = require('../middleware/auth');
-const { joinRooms, addWebSocketEventListeners } = require('./index');
-const { socketIOClientsConfig } = require('../../config/config');
+const {
+  Server
+} = require('socket.io');
+const {
+  authorizeWs,
+  validateEvent
+} = require('../middleware/auth');
+const {
+  joinRooms,
+  addWebSocketEventListeners
+} = require('./index');
+const {
+  socketIOClientsConfig
+} = require('../../config/config');
 let io;
 
 function initSocketIO(server) {
@@ -43,7 +53,10 @@ function initSocketIOClients() {
   const ioClient = require('socket.io-client');
 
   for (const client in socketIOClientsConfig) {
-    const { ip, port } = socketIOClientsConfig[client];
+    const {
+      ip,
+      port
+    } = socketIOClientsConfig[client];
 
     const socket = ioClient.connect(`http://${ip}:${port}`);
 
@@ -52,10 +65,20 @@ function initSocketIOClients() {
      *  y otro al canal de todas las unidades, al cual tienen acceso los administradores.
      */
     socket.on('gpsdata', (gpsdata) => {
-      const device_id = gpsdata.UniqueID;
+      const deviceId = gpsdata.UniqueID;
 
-      io.to(device_id).emit('gpsdata', gpsdata);
+      io.to(deviceId).emit('gpsdata', gpsdata);
       io.to('units').emit('gpsdata', gpsdata);
+    });
+
+    socket.on('entered.overlays', (deviceId, enteredOverlays) => {
+      io.to('units').emit('entered.overlays', deviceId, enteredOverlays);
+      io.to(deviceId).emit('entered.overlays', enteredOverlays);  
+    });
+
+    socket.on('exited.overlays', (deviceId, exitedOverlays) => {
+      io.to('units').emit('exited.overlays', deviceId, exitedOverlays);
+      io.to(deviceId).emit('exited.overlays', exitedOverlays);
     });
   }
 }
