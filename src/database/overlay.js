@@ -1,3 +1,4 @@
+const { get } = require('http');
 const Overlay = require('../models/overlay');
 const Unit = require('../models/unit');
 const { getUnitsInOverlay } = require('../utils/overlay');
@@ -5,43 +6,45 @@ const util = require('util');
 
 async function getOverlaysForUser(user) {
   const overlays = await Overlay.find({ owner: user });
-  const vehiclesNodes = [];
+  const unitNodes = [];
 
   overlays.forEach(overlay => {
     const overlayId = overlay._id.toString();
 
     for (const unitId of overlay.unitsInOverlay) {
-      vehiclesNodes.push({
+      unitNodes.push({
         _id: `${overlayId}-${unitId}`,
         category: overlayId,
+        uniqueId: unitId,
         name: unitId,
         type: 'vehicle',
         leaf: true,
-        icon: 'resources/avl/icons/geofences/vehicle.png'
+        icon: 'resources/icons/tracking/geofencemanager/overlaystypes/vehicle.png'
       });
     }
   });
 
-  /* agregar cada elemento del array vehiclesNodes al array overlays */
-  overlays.push(...vehiclesNodes);
+  /* agregar cada elemento del array validUnitsNodes al array overlays */
+  overlays.push(...unitNodes);
 
   return overlays;
 }
 
 async function saveOverlaysInDb(overlays) {
   const overlaysLen = overlays.length;
-  const existingOverlays = overlays.filter(overlay => overlay._id);
-  const existingOverlaysLen = existingOverlays.length;
   const newOverlays = overlays.filter(overlay => !overlay._id);
   const newOverlaysLen = newOverlays.length;
+  const existingOverlays = overlays.filter(overlay => overlay._id);
+  const existingOverlaysLen = existingOverlays.length;
   const totalRecs = [];
 
   console.log(`llegaron ${overlaysLen} overlays para guardar`);
-  console.dir(overlays);
   console.log(`${newOverlaysLen} overlays nuevos`);
+  console.log(util.inspect(newOverlays, false, null, true));
   console.log(`${existingOverlaysLen} overlays existentes`);
+  console.log(util.inspect(existingOverlays, false, null, true));
 
-  // Crear todos los overlays nuevos
+  // Crear todos los overlays nuevos∏
   if (newOverlaysLen) {
     const newOverlaysRecs = await createOverlays(newOverlays);
     totalRecs.push(...newOverlaysRecs);
@@ -52,103 +55,124 @@ async function saveOverlaysInDb(overlays) {
     totalRecs.push(...existingOverlaysRecs);
   }
 
+  totalRecs.forEach(rec => rec.loaded = true);
   return totalRecs;
 }
 
 async function createOverlays(newOverlays) {
-  const newOverlaysLen = newOverlays.length;
-  const bulkOperations = [];
-  /* verificar si alguna unidad dentro del array vehicles se encuentra dentro de la overlay
-  *  y del array de unidades dentro, actualizar su documento unit para reflejar overlay
-  *  en su array Overlays
-  *  */
+  console.log("Creando nuevas overlays");
 
-  for (const overlay of newOverlays) {
-    const unitsInOverlay = await getUnitsInOverlay(overlay);
+  newOverlays = await addUnitsInOverlays(newOverlays);
 
-    console.dir(`${unitsInOverlay.length} unidades en ${overlay.name}`);
+  const newOverlayDocs = await createOverlaysInDb(newOverlays);
 
-    const unitsInOverlayIds = unitsInOverlay.map(unit => unit.UniqueID);
+  const addBulkOperations = getAddBulkOperations(newOverlayDocs);
 
-    /*  actualizar el status de los vehiculos dentro de esta geocerca */
-    overlay.unitsInOverlay = unitsInOverlayIds;
-  }
+  await updateOverlaysStatusInUnitsCache(addBulkOperations);
 
-  console.log(`creando ${newOverlaysLen} overlays nuevos`);
+  /** 
+   * Por cada overlay recien creada, agregamos un elemento a children con la siguiente estructura
+   * {
+   *  _id: unitId,
+   * category: overlay._id.toString(),
+   * name: unitId,
+   * type: 'vehicle',
+   * leaf: true,
+   * icon: 'resources/avl/icons/geofences/vehicle.png'
+   * }
+   * 
+   * y agregamos una operación de escritura en bloque para cada vehiculo dentro de la overlay,
+   * esto para agregar el id de la overlay al array OverlaysIds del documento unit
+   */
+  addUnitNodes(newOverlayDocs);
 
-  const result = await Overlay.insertMany(newOverlays);
-
-  const newOverlaysRecs = result.map(overlayRec => {
-    const overlay = overlayRec.toObject();
-
-    overlay.children = overlay.unitsInOverlay.map(unitId => {
-      const vehicleOverlayStatusUpdate = {
-        updateOne: {
-          filter: { UniqueID: unitId },
-          update: { $addToSet: { Overlays: overlay._id.toString() } },
-        },
-      };
-
-      // Añade la operación al array
-      bulkOperations.push(vehicleOverlayStatusUpdate);
-
-      return {
-        _id: `${overlay._id}-${unitId}`,
-        category: overlay._id,
-        name: unitId,
-        type: 'vehicle',
-        leaf: true,
-        icon: 'resources/avl/icons/geofences/vehicle.png'
-      };
-    });
-
-    return overlay;
-  });
-
-  /* ejecutamos el bulkOperations */
-  if (bulkOperations.length > 0) {
-    console.log("agregando el id del overlay a los vehiculos que se encuentran dentro de él");
-    const bulkResult = await Unit.bulkWrite(bulkOperations);
-    console.log(util.inspect(bulkResult, false, null, true));
-  }
-
-  return newOverlaysRecs;
+  return newOverlayDocs;
 }
 
 async function updateOverlays(existingOverlays) {
-  // Contenedor para las operaciones de escritura en bloque
-  const updatedOverlays = [];
+  console.log("Actualizando overlays existentes");
 
-  for (const overlay of existingOverlays) {
+  existingOverlays = await addUnitsInOverlays(existingOverlays);
+
+  const updatedOverlaysRecs = await updateOverlaysInDb(existingOverlays);
+
+  const updatedOverlays = updatedOverlaysRecs.map(overlay => overlay.existingOverlay);
+
+  const addBulkOperations = getAddBulkOperations(updatedOverlays);
+
+  const removeBulkOperations = getRemoveBulkOperations(updatedOverlaysRecs);
+
+  await updateOverlaysStatusInUnitsCache([...addBulkOperations, ...removeBulkOperations]);
+
+  return updatedOverlays;
+}
+
+function getAddBulkOperations(overlays) {
+  const bulkOperations = [];
+
+  for (const overlay of overlays) {
     const overlayId = overlay._id;
-    const unitsInOverlay = await getUnitsInOverlay(overlay);
-    const bulkOperations = [];
+    const unitsInOverlayIds = overlay.unitsInOverlay;
 
-    console.dir(`${unitsInOverlay.length} unidades en ${overlay.name} : ${overlay._id.toString()}`);
-
-    const unitsInOverlayIds = unitsInOverlay.map(unit => unit.UniqueID);
-
-    for (const vehicleId of unitsInOverlayIds) {
-      const vehicleOverlayStatusUpdate = {
+    for (const unitId of unitsInOverlayIds) {
+      const unitOverlayStatusUpdate = {
         updateOne: {
-          filter: { UniqueID: vehicleId },
-          update: { $addToSet: { Overlays: overlayId } },
+          filter: { UniqueID: unitId },
+          update: {
+            $addToSet: {
+              OverlaysIds: overlayId
+            }
+          },
         },
       };
 
       // Añade la operación al array
-      bulkOperations.push(vehicleOverlayStatusUpdate);
+      bulkOperations.push(unitOverlayStatusUpdate);
     }
+  }
 
-    /*  actualizar el status de los vehiculos dentro de esta geocerca */
-    overlay.unitsInOverlay = unitsInOverlayIds;
+  return bulkOperations;
+}
 
-    let oldOverlay = await Overlay.findOneAndUpdate({ _id: overlay._id }, overlay, { returnDocument: 'before' });
+function getRemoveBulkOperations(updatedOverlaysRecs) {
+  /* Obtenemos la lista de vehículos que ya no son validos (listados en la propiedad validUnits del documento) para esta geocerca. Esto se logra, 
+  *  comparando la lista de vehículos en la base de datos con la lista recibida en el objeto overlay
+  */
+  const bulkOperations = [];
+  for (const rec of updatedOverlaysRecs) {
+    const oldOverlay = rec.oldOverlay;
+    const overlay = rec.existingOverlay;
+    const overlayId = overlay._id;
+    /* obtenemos la lista de vehiculos que estaban dentro pero ya no */
+    const wasInsideButNoLongerIds = oldOverlay.unitsInOverlay.filter(id => !overlay.unitsInOverlay.includes(id));
 
-    oldOverlay = oldOverlay.toObject();
+    for (const unitId of wasInsideButNoLongerIds) {
+      const unitOverlayStatusUpdate = {
+        updateOne: {
+          filter: { UniqueID: unitId },
+          update: { $pull: { Overlays: overlayId } },
+        },
+      };
 
-    /* 
-    *  Por cada vehiculo dentro del overlay agregamos un elemento a childre con la siguiente estructura
+      // Añade la operación al array
+      bulkOperations.push(unitOverlayStatusUpdate);
+    }
+  }
+
+  return bulkOperations;
+}
+
+async function updateOverlaysInDb(existingOverlays) {
+  const overlays = [];
+
+  for (const overlay of existingOverlays) {
+    const overlayId = overlay._id;
+
+    /* actualizamos el overlay en la base de datos  y recuperamos el documento recien sustituido */
+    let oldOverlay = await Overlay.findOneAndUpdate({ _id: overlayId }, overlay, { returnDocument: 'before' });
+
+    /** 
+    *  Por cada vehiculo dentro del overlay agregamos un elemento a children con la siguiente estructura
     *  {
     *    _id: unitId,
     *    category: overlay._id.toString(),
@@ -169,39 +193,14 @@ async function updateOverlays(existingOverlays) {
       };
     });
 
-    /* Obtenemos la lista de vehículos que ya no son validos (listados en la propiedad vehicles del documento) para esta geocerca. Esto se logra, 
-    *  comparando la lista de vehículos en la base de datos con la lista recibida en el objeto overlay
-    */
-    //const vehiclesNoLongerValid = oldOverlay.vehicles.filter(id => !overlay.vehicles.includes(id));
+    oldOverlay = oldOverlay.toObject();
 
-    /* obtenemos la lista de vehiculos que estaban dentro pero ya no */
-    const wasInsideButNoLongerIds = oldOverlay.unitsInOverlay.filter(id => !unitsInOverlayIds.includes(id));
+    oldOverlay._id = oldOverlay._id.toString();
 
-    for (const vehicleId of wasInsideButNoLongerIds) {
-      const vehicleOverlayStatusUpdate = {
-        updateOne: {
-          filter: { UniqueID: vehicleId },
-          update: { $pull: { Overlays: overlayId } },
-        },
-      };
-
-      // Añade la operación al array
-      bulkOperations.push(vehicleOverlayStatusUpdate);
-    }
-
-    if (bulkOperations.length > 0) {
-
-      console.log("bulkWrite object");
-      const result = await Unit.bulkWrite(bulkOperations);
-
-      console.log("resultado del bulkWrite");
-      console.log(util.inspect(result, false, null, true));
-    }
-
-    updatedOverlays.push(overlay);
+    overlays.push({ existingOverlay: overlay, oldOverlay });
   }
 
-  return updatedOverlays;
+  return overlays;
 }
 
 async function deleteOverlaysInDb(overlaysIds) {
@@ -214,15 +213,15 @@ async function deleteOverlaysInDb(overlaysIds) {
   return result;
 }
 
-async function removeOverlaysFromUnitsCache(overlaysIds){
+async function removeOverlaysFromUnitsCache(overlaysIds) {
   // Modifica los documentos en la colección unitsCache utilizando $pull
   const bulkOperations = [];
 
   for (const overlayId of overlaysIds) {
     const updateOperation = {
       updateMany: {
-        filter: { Overlays: overlayId },
-        update: { $pull: { Overlays: overlayId } },
+        filter: { OverlaysIds: overlayId },
+        update: { $pull: { OverlaysIds: overlayId } },
       },
     };
     bulkOperations.push(updateOperation);
@@ -232,7 +231,7 @@ async function removeOverlaysFromUnitsCache(overlaysIds){
   if (bulkOperations.length > 0) {
     const updateResult = await Unit.bulkWrite(bulkOperations);
     console.log('Resultado de actualizar unidades en unitsCache:');
-    console.dir(updateResult);
+    console.log(util.inspect(updateResult, false, null, true));
     return updateResult;
   }
 
@@ -252,6 +251,77 @@ async function updateOverlaysVisibilityInDb(overlays) {
   }
 
   return results;
+}
+
+/**
+ * 
+ * Funciones auxiliares
+ * 
+ */
+async function addUnitsInOverlays(overlays) {
+  for (const overlay of overlays) {
+    const unitsInOverlay = await getUnitsInOverlay(overlay);
+    const unitsInOverlayIds = unitsInOverlay.map(unit => unit.UniqueID);
+
+    console.log(`${unitsInOverlay.length} unidades dentro de ${overlay.name}`);
+
+    /*  agregar el status de los vehiculos dentro de esta geocerca */
+    overlay.unitsInOverlay = unitsInOverlayIds;
+  }
+
+  return overlays;
+}
+
+async function createOverlaysInDb(newOverlays) {
+  const newOverlaysLen = newOverlays.length;
+  const newOverlayDocs = [];
+
+  console.log(`guardando ${newOverlaysLen} overlays nuevos en la base de datos`);
+
+  const newOverlayRecs = await Overlay.insertMany(newOverlays);
+
+  newOverlayRecs.forEach(overlay => {
+    overlay = overlay.toObject();
+    overlay._id = overlay._id.toString();
+    newOverlayDocs.push(overlay);
+  });
+
+  return newOverlayDocs;
+}
+
+function addUnitNodes(newOverlayDocs) {
+  newOverlayDocs.forEach(overlayDoc => {
+    const unitNodes = [];
+    const overlayId = overlayDoc._id;
+
+    for (const unitId of overlayDoc.unitsInOverlay) {
+      unitNodes.push({
+        _id: `${overlayId}-${unitId}`,
+        category: overlayId,
+        uniqueId: unitId,
+        name: unitId,
+        type: 'vehicle',
+        leaf: true,
+        icon: 'resources/avl/icons/geofences/vehicle.png'
+      });
+    }
+
+    overlayDoc.children = unitNodes;
+  });
+}
+
+async function updateOverlaysStatusInUnitsCache(bulkOperations) {
+  /* ejecutamos el bulkOperations */
+  if (bulkOperations.length > 0) {
+    console.log("agregando el id del overlay a los vehiculos que se encuentran dentro de él");
+    console.log("y quitando el id del overlay a los vehiculos que ya no se encuentran dentro de él")
+    const bulkResult = await Unit.bulkWrite(bulkOperations);
+    console.log(util.inspect(bulkResult, false, null, true));
+
+    return bulkResult;
+  }
+
+  return [];
 }
 
 module.exports = {

@@ -1,6 +1,6 @@
 // src/routes/overlayRoutes.js
 const express = require('express');
-const { getListForUser, saveOverlays, deleteOverlays, updateOverlaysVisibility } = require('../controllers/overlay')
+const { getListForUser, saveOverlays, deleteOverlays, updateOverlaysVisibility } = require('../controllers/overlay');
 const {
   successHandler
 } = require('../utils/response');

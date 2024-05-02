@@ -15,6 +15,7 @@ const {
 let io;
 
 function initSocketIO(server) {
+  console.log('Inicializando socket.io');
   initSocketIOServer(server);
   initSocketIOClients();
 }
@@ -23,7 +24,7 @@ function initSocketIOServer(server) {
   // Inicializar una nueva instancia de socket.io pasando el servidor http
   io = new Server(server, {
     cors: {
-      origin: ['http://localhost:1841', 'https://api.locanet.mx'], // Asegúrate de agregar tus dominios aquí también
+      origin: ['http://localhost:1841', 'https://api.locanet.mx', 'http://143.198.11.182'],
       credentials: true
     }
   });

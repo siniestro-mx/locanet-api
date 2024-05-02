@@ -1,35 +1,20 @@
 const Unit = require('../models/unit');
 
 async function getUnitsInOverlay(overlay) {
-  let unitsInOverlay = [];
+  const query = {
+    UniqueID: { $in: overlay.validUnits },
+    Position: {
+      $geoWithin: {
+        $geometry: overlay.overlayBufferPolygon,
+      },
+    },
+  }
+
+  console.log(`Buscando unidades en overlay ${overlay.name}`);
+  console.dir(overlay, { depth: null });
 
   // Verifica el tipo de overlay y realiza la consulta correspondiente
-  switch (overlay.type) {
-    case 'circle':
-    case 'marker':
-      unitsInOverlay = await Unit.find({
-        UniqueID: { $in: overlay.vehicles },
-        Position: {
-          $near: {
-            $geometry: overlay.overlay,
-            $maxDistance: overlay.tolerance || overlay.radius,
-          },
-        },
-      });
-      break;
-    case 'polygon':
-    case 'rectangle':
-    case 'polyline':
-      unitsInOverlay = await Unit.find({
-        UniqueID: { $in: overlay.vehicles },
-        Position: {
-          $geoWithin: {
-            $geometry: overlay.type === 'polyline' ? overlay.overlayPolygon : overlay.overlay,
-          },
-        },
-      });
-      break;
-  }
+  const unitsInOverlay = await Unit.find(query);
 
   return unitsInOverlay;
 }

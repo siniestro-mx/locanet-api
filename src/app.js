@@ -21,7 +21,7 @@ app.use(cookieParser());
 
 // Configurar CORS
 app.use(cors({
-  origin: ['http://localhost:1841','https://nuevo.locanet.mx'],
+  origin: ['http://localhost:1841', 'https://nuevo.locanet.mx', 'http://143.198.11.182'],
   credentials: true
 }));
 

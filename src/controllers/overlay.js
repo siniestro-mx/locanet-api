@@ -16,18 +16,20 @@ async function getListForUser(req, res, next) {
     {
       "_id": "geofence",
       "name": "Geocercas",
-      "icon": "resources/avl/icons/geofences/geofence.png",
+      "icon": "resources/icons/tracking/geofencemanager/overlaystypes/geofence.png",
       "loaded": true,
       "category": "root",
-      "checked": true
+      "checked": true,
+      "expanded": true
     },
     {
       "_id": "poi",
       "name": "Puntos y Localizaciones",
-      "icon": "resources/avl/icons/geofences/poi.png",
+      "icon": "resources/icons/tracking/geofencemanager/overlaystypes/poi.png",
       "loaded": true,
       "category": "root",
-      "checked": true
+      "checked": true,
+      "expanded": true
     }
   ];
 
@@ -35,6 +37,9 @@ async function getListForUser(req, res, next) {
   const overlays = await getOverlaysForUser(req.user.username);
 
   overlays.forEach(overlay => {
+    overlay.loaded = true;
+    overlay.expanded = true;
+    
     if (overlay.checked === false) {
       if (overlay.category === 'geofence') {
         records[0].checked = false;
@@ -47,27 +52,21 @@ async function getListForUser(req, res, next) {
   console.log(`enviando ${overlays.length} overlays`);
   records = records.concat(overlays);
 
+  console.dir(records, { depth: null });
   successHandler(res, 200, 'Lista de overlays', records);
 }
 
 async function saveOverlays(req, res, next) {
   const overlays = req.body;
 
-  /* agregamos un GeoJSON de tipo Polygon a la linea, para abarcar la tolerancia */
-  overlays.forEach(overlay => {
-    if (overlay.type === 'polyline') {
-      const tolerance = Math.round((overlay.tolerance / 1000)) || 0.05;
-      overlay.overlayPolygon = turfBuffer(overlay.overlay, tolerance, { units: 'kilometers' }).geometry;
-    }
-  });
+  console.dir(overlays);
 
-  /* overlays es un array de objetos overlay con varias propiedades, verificar si contienen el campo _id, si lo contienen, actualizar
-  *  los datos en la base de datos, si no tiene, crear nuevos documentos en la base */
-  let resultSaveOverlays = await saveOverlaysInDb(overlays);
+  /* overlays es un array de objetos overlay, los que incluyen _id, se actualizan, los demas se crean  */
+  let savedOverlays = await saveOverlaysInDb(overlays);
   console.log('resultado de guardar overlays');
-  console.log(util.inspect(resultSaveOverlays, false, null, true));
+  console.log(util.inspect(savedOverlays, false, null, true));
 
-  successHandler(res, 200, 'Overlays guardados', resultSaveOverlays);
+  successHandler(res, 200, 'Overlays guardados', savedOverlays);
 }
 
 async function deleteOverlays(req, res, next) {
