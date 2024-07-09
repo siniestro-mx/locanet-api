@@ -1,55 +1,101 @@
-// src/app.js
 require('dotenv').config();
-const express = require('express');
 const http = require('http');
+const express = require('express');
+const compression = require('compression');
+const morgan = require('morgan');
+const responseTime = require('response-time');
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
 const cors = require('cors');
-const routes = require('./routes/index');
-const { errorHandler, notFoundHandler } = require('./middleware/index');
-const { initSocketIO } = require('./websockets/init');
+const csrf = require('csrf');
+const routes = require('./routesIndex');
+const  errorHandler = require('./middleware/errorHandler');
+const  notFoundHandler = require('./middleware/notFoundHandler');
+const initSocketIO = require('./websocketsInit');
 const config = require('../config/config');
-require('./database/index');
 
-const app = express();
+const connectDb = require('./dbInit');
 
-// Middleware para establecer encabezados de seguridad
-app.use(helmet());
+const tokens = new csrf();
 
-// Middleware para el análisis de cookies
-app.use(cookieParser());
+async function startServer() {
+  try {
+    await connectDb();
 
-// Configurar CORS
-app.use(cors({
-  origin: ['http://localhost:1841', 'https://nuevo.locanet.mx', 'http://143.198.11.182'],
-  credentials: true
-}));
+    const app = createApp();
+    const server = http.createServer(app);
+    
+    initSocketIO(server);
 
-// Middleware para el análisis de JSON
-app.use(express.json());
+    const PORT = config.LOCANET_PORT || 3000;
+    const IP = config.LOCANET_IP || "10.132.166.212";
 
-// Rutas
-app.use('/', routes)
+    server.listen(PORT, IP, () => {
+      console.log(`Servidor escuchando en el puerto ${PORT} ip ${IP}`);
+    });
+  } catch (error) {
+    console.error('Error al iniciar el servidor', error);
+    process.exit(1); // Salir del proceso con un error
+  }
+}
 
-// Middleware para manejar rutas no encontradas
-app.use(notFoundHandler);
+function createApp() {
+  console.log('Creando locanet-api app');
+  const app = express();
 
-// Middleware para manejar errores
-app.use(errorHandler);
+  /** configuracion del middleware */
+  app.use(responseTime());
+  app.use(compression());
+  app.use(helmet());
+  app.use(cookieParser());
+  app.use(cors({
+    origin: ['http://localhost:1841', 'https://nuevo.locanet.mx'],
+    credentials: true
+  }));
+  app.use(express.json());
 
-const PORT = config.LOCANET_PORT || 3000;
-const IP = config.LOCANET_IP;
+  app.use(morgan('tiny'));
+  /** Configurar CSRF */
+  //configureCSRF(app);
 
-// Crear un servidor http y pasar la app de express
-const server = http.createServer(app);
+  /** configuracion de rutas */
+  app.use('/', routes);
 
-/**  Inicializar socket.io, tanto server como cliente. El server sirve para comunicarse con el frontend
-*    el cliente sirve para conectarse a los parsers de los dispositivos gps y recibir actualizaciones de estos
-*/
-initSocketIO(server);
+  /** manejo de rutas no encontradas */
+  app.use(notFoundHandler);
 
-server.listen(PORT, IP, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT} ip ${IP}`);
-});
+  /** manejo de errores */
+  app.use(errorHandler);
 
-module.exports = app;
+  return app;
+}
+
+function configureCSRF(app) {
+  app.use((req, res, next) => {
+    if (!req.session.secret) {
+      req.session.secret = tokens.secretSync();
+    }
+    next();
+  });
+
+  app.use((req, res, next) => {
+    res.cookie('_csrf', tokens.create(req.session.secret), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // Solo en producción
+      sameSite: 'strict'
+    });
+    next();
+  });
+
+  const csrfProtection = (req, res, next) => {
+    const token = req.cookies._csrf;
+    if (!token || !tokens.verify(req.session.secret, token)) {
+      return res.status(403).send('Invalid CSRF token');
+    }
+    next();
+  };
+
+  app.post('*', csrfProtection);
+}
+
+startServer();

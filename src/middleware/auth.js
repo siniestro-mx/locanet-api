@@ -1,5 +1,5 @@
-const { findUserByUsername } = require('../database/user');
-const { verifyToken } = require('../utils/auth');
+//src/middleware/auth.js
+const { findUserByUsername } = require('../modules/user/userDb');
 
 async function authorize(req, res, next) {
   const cookie = req.get('cookie');
@@ -48,10 +48,10 @@ async function authorize(req, res, next) {
 
   let valid_role = false;
 
-  if(req.user){
+  if (req.user) {
     valid_role = validatePath(path, req.user.role);
   }
-  
+
 
   if (valid_role) return next();
 
@@ -74,6 +74,10 @@ async function authorizeWs(socket, next) {
     //const result = await verifyToken(token);
     //const user = await findUserByUsername(result.payload.sub);
     let user = await findUserByUsername(token);
+
+    if (!user) {
+      return next(new Error(`El usuario no ha iniciado sesión`));
+    }
 
     user = user.toJSON();
 

@@ -7,6 +7,4 @@ function notFoundHandler(req, res, next) {
   });
 }
 
-module.exports = {
-  notFoundHandler
-};
+module.exports = notFoundHandler;

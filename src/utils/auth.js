@@ -37,7 +37,7 @@ async function getPrivateKey() {
 
   const private_key = await importJWK(jwk, 'EdDSA').catch(err => {
     console.dir(err)
-    throw new Error(`Error al cargar la llave privada para jwt`, { cause: { type: 'Authentication', err: err, name:'private.key.load' } })
+    throw new Error(`Error al cargar la llave privada para jwt`, { cause: { type: 'Authentication', err: err, name: 'private.key.load' } })
   })
 
   return private_key
@@ -62,7 +62,7 @@ async function verifyToken(token) {
   }
 }
 
-async function getPublicKey() {  
+async function getPublicKey() {
   const { importJWK } = require('jose');
   const public_key_base64 = config.LOCANET_SIGNIN_PUBLIC_KEY;
   const jwk = {
